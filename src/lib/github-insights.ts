@@ -82,7 +82,7 @@ export function formatCompact(value: number): string {
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export async function fetchGithubAccount(ownerInput: string): Promise<GithubAccount> {
+export async function fetchGithubAccount(ownerInput: string, signal?: AbortSignal): Promise<GithubAccount> {
   const owner = normalizeOwnerInput(ownerInput);
   if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(owner)) {
     throw new Error("Enter a valid GitHub username, organization, or profile URL.");
@@ -91,10 +91,12 @@ export async function fetchGithubAccount(ownerInput: string): Promise<GithubAcco
   const headers = { Accept: "application/vnd.github+json" };
   let profileResponse = await fetch(`https://api.github.com/users/${encodeURIComponent(owner)}`, {
     headers,
+    signal,
   });
   if (profileResponse.status === 404) {
     profileResponse = await fetch(`https://api.github.com/orgs/${encodeURIComponent(owner)}`, {
       headers,
+      signal,
     });
   }
 
@@ -113,7 +115,7 @@ export async function fetchGithubAccount(ownerInput: string): Promise<GithubAcco
   for (let page = 1; page <= 10; page += 1) {
     const response = await fetch(
       `https://api.github.com/${endpoint}/${encodeURIComponent(owner)}/repos?type=${endpoint === "orgs" ? "public" : "owner"}&sort=updated&per_page=100&page=${page}`,
-      { headers },
+      { headers, signal },
     );
     if (!response.ok) {
       if (response.status === 403 || response.status === 429) {
