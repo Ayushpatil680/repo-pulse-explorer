@@ -35,14 +35,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   calculateEngagementScore,
@@ -335,35 +327,40 @@ function Index() {
           </div>
         </header>
 
-        <Dialog open={repositoryDialogOpen} onOpenChange={setRepositoryDialogOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle className="font-display text-base">Analyze multiple repositories</DialogTitle>
-              <DialogDescription>Paste GitHub repository links below, one per line. Duplicate links are removed.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={startRepositoryAnalysis} className="space-y-3">
-              <label htmlFor="repository-links" className="text-xs font-medium text-foreground">Repository links</label>
-              <Textarea
-                id="repository-links"
-                value={repositoryLinksText}
-                onChange={(event) => {
-                  setRepositoryLinksText(event.target.value);
-                  setRepositoryInputError("");
-                }}
-                placeholder={"https://github.com/vercel/next.js\nhttps://github.com/facebook/react"}
-                rows={7}
-                className="resize-y font-mono text-xs"
-                aria-invalid={Boolean(repositoryInputError)}
-                aria-describedby={repositoryInputError ? "repository-links-error" : undefined}
-              />
-              {repositoryInputError && <p id="repository-links-error" role="alert" className="text-xs text-destructive">{repositoryInputError}</p>}
-              <DialogFooter className="pt-2">
-                <Button type="button" variant="outline" onClick={() => setRepositoryDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" className="gap-2"><Layers3 size={15} />Analyze repositories</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {repositoryDialogOpen && (
+          <section aria-labelledby="repository-entry-title" className="border-b border-border bg-surface-raised px-4 py-5 sm:px-6 xl:px-9">
+            <div className="mx-auto max-w-[1500px]">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="repository-entry-title" className="font-display text-sm font-medium">Analyze multiple repositories</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Paste GitHub repository links below, one per line. Duplicate links are removed.</p>
+                </div>
+                <Button type="button" variant="ghost" size="icon" aria-label="Close repository links" onClick={() => setRepositoryDialogOpen(false)}><X size={16} /></Button>
+              </div>
+              <form onSubmit={startRepositoryAnalysis} className="space-y-3">
+                <label htmlFor="repository-links" className="text-xs font-medium text-foreground">Repository links</label>
+                <Textarea
+                  id="repository-links"
+                  value={repositoryLinksText}
+                  onChange={(event) => {
+                    setRepositoryLinksText(event.target.value);
+                    setRepositoryInputError("");
+                  }}
+                  placeholder={"https://github.com/vercel/next.js\nhttps://github.com/facebook/react"}
+                  rows={5}
+                  className="resize-y font-mono text-xs"
+                  aria-invalid={Boolean(repositoryInputError)}
+                  aria-describedby={repositoryInputError ? "repository-links-error" : undefined}
+                />
+                {repositoryInputError && <p id="repository-links-error" role="alert" className="text-xs text-destructive">{repositoryInputError}</p>}
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setRepositoryDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="gap-2"><Layers3 size={15} />Analyze repositories</Button>
+                </div>
+              </form>
+            </div>
+          </section>
+        )}
 
         <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 xl:px-9">
           <section id="overview" className="scroll-mt-24">
