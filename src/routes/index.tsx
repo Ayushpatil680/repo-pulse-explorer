@@ -244,7 +244,10 @@ function Index() {
       setActiveRepositoryLinks(links);
       setActiveOwner("");
       setCustomRepositorySelection(true);
-      setOwnerInput(links.length === 1 ? links[0] : `${links.length} repositories selected`);
+      const selectedOwnerLabel = links.length === 1 && links[0]
+        ? links[0]
+        : `${links.length} repositories selected`;
+      setOwnerInput(selectedOwnerLabel);
       setQuery("");
       setShowAll(false);
       setRepositoryDialogOpen(false);
