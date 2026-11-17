@@ -87,6 +87,7 @@ function Index() {
   const [snapshots, setSnapshots] = useState<TrendSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("stargazers_count");
   const [sortDescending, setSortDescending] = useState(true);
@@ -109,7 +110,7 @@ function Index() {
       });
 
     return () => controller.abort();
-  }, [activeOwner]);
+  }, [activeOwner, refreshKey]);
 
   useEffect(() => {
     if (!account) return;
@@ -190,7 +191,9 @@ function Index() {
       });
   }, [scoredRepositories, query, sortField, sortDescending]);
   const displayedRepositories = showAll ? filteredRepositories : filteredRepositories.slice(0, 8);
-  const growth = snapshots.length > 1 ? snapshots.at(-1)!.stars - snapshots.at(-2)!.stars : null;
+  const currentSnapshot = snapshots[snapshots.length - 1];
+  const previousSnapshot = snapshots[snapshots.length - 2];
+  const growth = currentSnapshot && previousSnapshot ? currentSnapshot.stars - previousSnapshot.stars : null;
 
   function startAnalysis(event?: FormEvent<HTMLFormElement>, selectedOwner?: string) {
     event?.preventDefault();
@@ -240,9 +243,9 @@ function Index() {
           <p className="mb-2 px-3 font-display text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Quick scan</p>
           <div className="space-y-1">
             {SAMPLE_OWNERS.map((sample) => (
-              <button key={sample} onClick={() => startAnalysis(undefined, sample)} className="sidebar-link flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm">
+              <Button variant="ghost" size="sm" key={sample} onClick={() => startAnalysis(undefined, sample)} className="sidebar-link h-auto w-full justify-start gap-3 px-3 py-2.5 text-left text-sm font-normal">
                 <span className="size-1.5 rounded-full bg-primary/80" />{sample}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -289,7 +292,7 @@ function Index() {
                 <p className="mt-1.5 text-sm text-muted-foreground">Public repository performance, engagement, and maintenance signals.</p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-9 gap-2" disabled={loading || !account} onClick={() => startAnalysis()} title="Refresh analysis"><RefreshCw className={loading ? "animate-spin" : ""} size={14} /><span className="hidden sm:inline">Refresh</span></Button>
+              <Button variant="outline" size="sm" className="h-9 gap-2" disabled={loading || !account} onClick={() => setRefreshKey((key) => key + 1)} title="Refresh analysis"><RefreshCw className={loading ? "animate-spin" : ""} size={14} /><span className="hidden sm:inline">Refresh</span></Button>
                 <Button variant="outline" size="sm" className="h-9 gap-2" disabled={!account} onClick={exportCsv} title="Export repositories as CSV"><Download size={14} /><span className="hidden sm:inline">Export CSV</span></Button>
               </div>
             </div>
@@ -374,7 +377,7 @@ function Index() {
           <section id="repositories" className="panel mt-5 scroll-mt-24 overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
               <div><div className="flex items-center gap-2"><h2 className="font-display text-sm font-medium">Repositories</h2><span className="rounded-sm bg-secondary px-1.5 py-0.5 font-display text-[10px] text-muted-foreground">{account ? repositories.length : "—"}</span></div><p className="mt-1 text-xs text-muted-foreground">Forks excluded · sorted by {sortField === "score" ? "engagement" : sortField.replaceAll("_", " ")}</p></div>
-              <label className="relative w-full sm:w-[250px]"><span className="sr-only">Filter repositories</span><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter name or language…" className="h-8 w-full rounded-md border border-input bg-surface-inset pl-8 pr-8 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />{query && <button type="button" aria-label="Clear repository filter" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X size={13} /></button>}</label>
+              <label className="relative w-full sm:w-[250px]"><span className="sr-only">Filter repositories</span><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter name or language…" className="h-8 w-full rounded-md border border-input bg-surface-inset pl-8 pr-8 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />{query && <Button type="button" variant="ghost" size="icon" aria-label="Clear repository filter" onClick={() => setQuery("")} className="absolute right-0.5 top-1/2 size-7 -translate-y-1/2 text-muted-foreground"><X size={13} /></Button>}</label>
             </div>
             <div className="scrollbar-quiet overflow-x-auto">
               <table className="w-full min-w-[780px] border-collapse text-left text-xs">
@@ -430,7 +433,9 @@ function TrendChart({ snapshots, loading }: { snapshots: TrendSnapshot[]; loadin
     snapshot,
   }));
   const line = points.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
-  const area = points.length > 1 ? `${line} L${points.at(-1)?.x},${height - bottom} L${points[0]?.x},${height - bottom} Z` : "";
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  const area = points.length > 1 && firstPoint && lastPoint ? `${line} L${lastPoint.x},${height - bottom} L${firstPoint.x},${height - bottom} Z` : "";
   if (loading) return <div className="flex h-[190px] items-center justify-center text-muted-foreground"><LoaderCircle size={18} className="animate-spin" /></div>;
   if (!snapshots.length) return <div className="flex h-[190px] items-center justify-center text-xs text-muted-foreground">Snapshot data will appear here.</div>;
   return <svg role="img" aria-label="Historical daily star-count snapshots" viewBox={`0 0 ${width} ${height}`} className="h-[190px] w-full" preserveAspectRatio="none">
@@ -471,7 +476,7 @@ function SortHeader({ title, field, sortField, descending, onSort }: {
   title: string; field: SortField; sortField: SortField; descending: boolean; onSort: (field: SortField) => void;
 }) {
   const selected = field === sortField;
-  return <th scope="col" className="px-3 py-3 font-medium"><button type="button" onClick={() => onSort(field)} aria-sort={selected ? (descending ? "descending" : "ascending") : "none"} className={`inline-flex items-center gap-1 ${selected ? "text-foreground" : "hover:text-foreground"}`}>{title}{selected ? descending ? <ArrowDown size={11} /> : <ArrowUp size={11} /> : null}</button></th>;
+  return <th scope="col" className="px-3 py-3 font-medium"><Button variant="ghost" size="sm" type="button" onClick={() => onSort(field)} aria-sort={selected ? (descending ? "descending" : "ascending") : "none"} className={`h-auto gap-1 p-0 text-[10px] font-medium uppercase ${selected ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{title}{selected ? descending ? <ArrowDown size={11} /> : <ArrowUp size={11} /> : null}</Button></th>;
 }
 
 function RepositoryRow({ repository, score }: { repository: GithubRepository; score: number }) {
