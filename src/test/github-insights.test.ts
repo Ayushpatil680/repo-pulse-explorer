@@ -4,6 +4,7 @@ import {
   calculateEngagementScore,
   getRecencyMultiplier,
   normalizeOwnerInput,
+  parseGithubRepositoryLinks,
 } from "@/lib/github-insights";
 
 describe("GitHub insight calculations", () => {
@@ -11,6 +12,23 @@ describe("GitHub insight calculations", () => {
     expect(normalizeOwnerInput("@octocat")).toBe("octocat");
     expect(normalizeOwnerInput("https://github.com/octocat/Hello-World")).toBe("octocat");
     expect(normalizeOwnerInput("github.com/vercel/next.js/")).toBe("vercel");
+  });
+
+  it("accepts multiple GitHub repository links and removes duplicates", () => {
+    expect(parseGithubRepositoryLinks([
+      "https://github.com/vercel/next.js/tree/canary",
+      "github.com/facebook/react.git",
+      "https://github.com/vercel/next.js",
+    ])).toEqual([
+      { owner: "vercel", repository: "next.js", url: "https://github.com/vercel/next.js" },
+      { owner: "facebook", repository: "react", url: "https://github.com/facebook/react" },
+    ]);
+  });
+
+  it("rejects non-GitHub links in the repository list", () => {
+    expect(() => parseGithubRepositoryLinks(["https://example.com/owner/repo"])).toThrow(
+      "Enter a GitHub repository link in owner/repository format",
+    );
   });
 
   it("uses the presentation's 1.50x, 1.25x, 1.00x, and 0.60x recency tiers", () => {

@@ -26,6 +26,7 @@ export type GithubRepository = {
   pushed_at: string | null;
   fork: boolean;
   archived: boolean;
+  owner?: Pick<GithubProfile, "login" | "avatar_url" | "html_url" | "type">;
 };
 
 export type GithubAccount = {
@@ -38,6 +39,39 @@ export type TrendSnapshot = {
   stars: number;
   repositories: number;
 };
+
+export type GithubRepositoryLink = {
+  owner: string;
+  repository: string;
+  url: string;
+};
+
+export function parseGithubRepositoryLinks(input: string[]): GithubRepositoryLink[] {
+  const links = new Map<string, GithubRepositoryLink>();
+  for (const rawInput of input) {
+    const value = rawInput.trim();
+    if (!value) continue;
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(value.startsWith("http") ? value : `https://${value}`);
+    } catch {
+      throw new Error(`That repository link is not valid: “${value}”.`);
+    }
+    const parts = parsedUrl.pathname.split("/").filter(Boolean);
+    const owner = parts[0] ?? "";
+    const repository = (parts[1] ?? "").replace(/\.git$/i, "");
+    if (
+      !["github.com", "www.github.com"].includes(parsedUrl.hostname.toLowerCase()) ||
+      !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(owner) ||
+      !/^[a-zA-Z0-9_.-]+$/.test(repository)
+    ) {
+      throw new Error(`Enter a GitHub repository link in owner/repository format: “${value}”.`);
+    }
+    const key = `${owner}/${repository}`.toLowerCase();
+    links.set(key, { owner, repository, url: `https://github.com/${owner}/${repository}` });
+  }
+  return [...links.values()];
+}
 
 export function normalizeOwnerInput(input: string): string {
   const value = input.trim();
@@ -129,6 +163,45 @@ export async function fetchGithubAccount(ownerInput: string, signal?: AbortSigna
   }
 
   return { profile, repositories: repositories.filter((repository) => !repository.fork) };
+}
+
+export async function fetchGithubRepositories(
+  repositoryInputs: string[],
+  signal?: AbortSignal,
+): Promise<GithubAccount> {
+  const links = parseGithubRepositoryLinks(repositoryInputs);
+  if (!links.length) throw new Error("Add at least one GitHub repository link.");
+
+  const repositories = await Promise.all(links.map(async ({ owner, repository }) => {
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`,
+      { headers: { Accept: "application/vnd.github+json" }, ...(signal ? { signal } : {}) },
+    );
+    if (!response.ok) {
+      if (response.status === 404) throw new Error(`Repository not found or not public: ${owner}/${repository}.`);
+      if (response.status === 403 || response.status === 429) {
+        throw new Error("GitHub’s public request limit has been reached. Please try again later.");
+      }
+      throw new Error(`GitHub could not load ${owner}/${repository} (HTTP ${response.status}).`);
+    }
+    return (await response.json()) as GithubRepository;
+  }));
+
+  const firstRepository = repositories[0];
+  const firstOwner = firstRepository?.owner;
+  if (!firstRepository || !firstOwner) {
+    throw new Error("GitHub did not return repository owner details.");
+  }
+  const profile: GithubProfile = {
+    ...firstOwner,
+    name: null,
+    bio: null,
+    company: null,
+    location: null,
+    followers: 0,
+    public_repos: repositories.length,
+  };
+  return { profile, repositories };
 }
 
 export function makeCsv(repositories: GithubRepository[]): string {

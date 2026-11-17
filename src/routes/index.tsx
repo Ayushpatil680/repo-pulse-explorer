@@ -19,6 +19,7 @@ import {
   GitFork,
   Github,
   Globe2,
+  Layers3,
   LayoutDashboard,
   LoaderCircle,
   MapPin,
@@ -35,11 +36,22 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
   calculateEngagementScore,
   fetchGithubAccount,
+  fetchGithubRepositories,
   formatCompact,
   makeCsv,
   normalizeOwnerInput,
+  parseGithubRepositoryLinks,
   type GithubAccount,
   type GithubRepository,
   type TrendSnapshot,
@@ -83,6 +95,12 @@ const languageColors: Record<string, string> = {
 function Index() {
   const [ownerInput, setOwnerInput] = useState("vercel");
   const [activeOwner, setActiveOwner] = useState("vercel");
+  const [activeRepositoryLinks, setActiveRepositoryLinks] = useState<string[]>([]);
+  const [selectedRepositoryLinks, setSelectedRepositoryLinks] = useState<string[]>([]);
+  const [repositoryDialogOpen, setRepositoryDialogOpen] = useState(false);
+  const [repositoryLinksText, setRepositoryLinksText] = useState("");
+  const [repositoryInputError, setRepositoryInputError] = useState("");
+  const [customRepositorySelection, setCustomRepositorySelection] = useState(false);
   const [account, setAccount] = useState<GithubAccount | null>(null);
   const [snapshots, setSnapshots] = useState<TrendSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +117,9 @@ function Index() {
     setError("");
     setAccount(null);
 
-    fetchGithubAccount(activeOwner, controller.signal)
+    (activeRepositoryLinks.length
+      ? fetchGithubRepositories(activeRepositoryLinks, controller.signal)
+      : fetchGithubAccount(activeOwner, controller.signal))
       .then((result) => setAccount(result))
       .catch((fetchError: unknown) => {
         if (fetchError instanceof Error && fetchError.name === "AbortError") return;
@@ -110,11 +130,13 @@ function Index() {
       });
 
     return () => controller.abort();
-  }, [activeOwner, refreshKey]);
+  }, [activeOwner, activeRepositoryLinks, refreshKey]);
 
   useEffect(() => {
     if (!account) return;
-    const normalizedOwner = account.profile.login.toLowerCase();
+    const normalizedOwner = customRepositorySelection
+      ? `selection:${activeRepositoryLinks.map((link) => link.toLowerCase()).sort().join("|")}`
+      : account.profile.login.toLowerCase();
     const today = new Date().toISOString().slice(0, 10);
     const stars = account.repositories.reduce((sum, repository) => sum + repository.stargazers_count, 0);
     const currentSnapshot: TrendSnapshot = {
@@ -136,7 +158,7 @@ function Index() {
     ].slice(-30);
     window.localStorage.setItem(`${HISTORY_PREFIX}${normalizedOwner}`, JSON.stringify(nextSnapshots));
     setSnapshots(nextSnapshots);
-  }, [account]);
+  }, [account, activeRepositoryLinks, customRepositorySelection]);
 
   const now = new Date();
   const repositories = account?.repositories ?? [];
@@ -201,8 +223,34 @@ function Index() {
     if (!normalized) return;
     setOwnerInput(normalized);
     setActiveOwner(normalized);
+    setActiveRepositoryLinks([]);
+    setSelectedRepositoryLinks([]);
+    setCustomRepositorySelection(false);
     setQuery("");
     setShowAll(false);
+  }
+
+  function startRepositoryAnalysis(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    try {
+      const parsedLinks = parseGithubRepositoryLinks(repositoryLinksText.split(/\r?\n/));
+      if (!parsedLinks.length) {
+        setRepositoryInputError("Add at least one GitHub repository link.");
+        return;
+      }
+      const links = parsedLinks.map((link) => link.url);
+      setRepositoryInputError("");
+      setSelectedRepositoryLinks(links);
+      setActiveRepositoryLinks(links);
+      setActiveOwner("");
+      setCustomRepositorySelection(true);
+      setOwnerInput(links.length === 1 ? links[0] : `${links.length} repositories selected`);
+      setQuery("");
+      setShowAll(false);
+      setRepositoryDialogOpen(false);
+    } catch (parseError) {
+      setRepositoryInputError(parseError instanceof Error ? parseError.message : "Check the repository links and try again.");
+    }
   }
 
   function exportCsv() {
@@ -259,7 +307,7 @@ function Index() {
         <header className="sticky top-0 z-20 flex min-h-[68px] flex-wrap items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-6 xl:px-9">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground lg:hidden"><Github size={17} /></div>
-            <div className="hidden min-w-0 sm:block"><p className="font-display text-xs text-muted-foreground">WORKSPACE / REPOSITORY ANALYTICS</p><p className="mt-0.5 truncate text-sm font-medium">{account?.profile.login ?? "GitHub overview"}</p></div>
+            <div className="hidden min-w-0 sm:block"><p className="font-display text-xs text-muted-foreground">WORKSPACE / REPOSITORY ANALYTICS</p><p className="mt-0.5 truncate text-sm font-medium">{customRepositorySelection ? `${activeRepositoryLinks.length} linked repositories` : account?.profile.login ?? "GitHub overview"}</p></div>
             <nav aria-label="Mobile dashboard sections" className="flex items-center gap-1 lg:hidden">
               <a className="rounded px-2 py-1 text-xs text-foreground" href="#overview">Overview</a>
               <a className="rounded px-2 py-1 text-xs text-muted-foreground" href="#repositories">Repos</a>
@@ -280,8 +328,39 @@ function Index() {
               </label>
               <Button type="submit" size="sm" className="h-9 px-3"><span className="hidden sm:inline">Analyze</span><Search className="sm:hidden" /></Button>
             </form>
+            <Button type="button" variant="outline" size="sm" className="h-9 gap-2 px-3" onClick={() => setRepositoryDialogOpen(true)}><Layers3 size={15} /><span className="hidden sm:inline">Multiple repos</span><span className="sm:hidden">Repos</span></Button>
           </div>
         </header>
+
+        <Dialog open={repositoryDialogOpen} onOpenChange={setRepositoryDialogOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle className="font-display text-base">Analyze multiple repositories</DialogTitle>
+              <DialogDescription>Paste GitHub repository links below, one per line. Duplicate links are removed.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={startRepositoryAnalysis} className="space-y-3">
+              <label htmlFor="repository-links" className="text-xs font-medium text-foreground">Repository links</label>
+              <Textarea
+                id="repository-links"
+                value={repositoryLinksText}
+                onChange={(event) => {
+                  setRepositoryLinksText(event.target.value);
+                  setRepositoryInputError("");
+                }}
+                placeholder={"https://github.com/vercel/next.js\nhttps://github.com/facebook/react"}
+                rows={7}
+                className="resize-y font-mono text-xs"
+                aria-invalid={Boolean(repositoryInputError)}
+                aria-describedby={repositoryInputError ? "repository-links-error" : undefined}
+              />
+              {repositoryInputError && <p id="repository-links-error" role="alert" className="text-xs text-destructive">{repositoryInputError}</p>}
+              <DialogFooter className="pt-2">
+                <Button type="button" variant="outline" onClick={() => setRepositoryDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" className="gap-2"><Layers3 size={15} />Analyze repositories</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 xl:px-9">
           <section id="overview" className="scroll-mt-24">
@@ -311,17 +390,18 @@ function Index() {
               <div className="load-in mb-5 flex flex-wrap items-center gap-4 border border-border bg-card px-4 py-4 sm:px-5">
                 <img src={account.profile.avatar_url} alt={`${account.profile.login} avatar`} className="size-12 rounded-full border border-border" />
                 <div className="min-w-[180px] flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold">{account.profile.name || account.profile.login}</h2><span className="rounded-sm border border-border bg-secondary px-2 py-0.5 font-display text-[10px] uppercase text-muted-foreground">{account.profile.type === "Organization" ? "Organization" : "User"}</span></div>
-                  <a href={account.profile.html_url} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 font-display text-xs text-primary hover:underline">@{account.profile.login}<ExternalLink size={11} /></a>
-                  {account.profile.bio && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{account.profile.bio}</p>}
+                  <div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold">{customRepositorySelection ? "Selected repositories" : account.profile.name || account.profile.login}</h2><span className="rounded-sm border border-border bg-secondary px-2 py-0.5 font-display text-[10px] uppercase text-muted-foreground">{customRepositorySelection ? `${account.repositories.length} linked` : account.profile.type === "Organization" ? "Organization" : "User"}</span></div>
+                  {!customRepositorySelection && <a href={account.profile.html_url} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 font-display text-xs text-primary hover:underline">@{account.profile.login}<ExternalLink size={11} /></a>}
+                  {customRepositorySelection ? <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Comparing the public repositories you added below.</p> : account.profile.bio && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{account.profile.bio}</p>}
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    {account.profile.company && <span>{account.profile.company}</span>}
-                    {account.profile.location && <span className="inline-flex items-center gap-1"><MapPin size={12} />{account.profile.location}</span>}
-                    <span className="inline-flex items-center gap-1"><UsersRound size={12} />{formatCompact(account.profile.followers)} followers</span>
+                    {!customRepositorySelection && account.profile.company && <span>{account.profile.company}</span>}
+                    {!customRepositorySelection && account.profile.location && <span className="inline-flex items-center gap-1"><MapPin size={12} />{account.profile.location}</span>}
+                    {!customRepositorySelection && <span className="inline-flex items-center gap-1"><UsersRound size={12} />{formatCompact(account.profile.followers)} followers</span>}
+                    {customRepositorySelection && <span>{selectedRepositoryLinks.length} unique repository links</span>}
                     <span className="inline-flex items-center gap-1"><CalendarDays size={12} />Snapshot {new Date().toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}</span>
                   </div>
                 </div>
-                <a href={account.profile.html_url} target="_blank" rel="noreferrer" aria-label="Open GitHub profile" className="grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><ArrowUpRight size={17} /></a>
+                {!customRepositorySelection && <a href={account.profile.html_url} target="_blank" rel="noreferrer" aria-label="Open GitHub profile" className="grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><ArrowUpRight size={17} /></a>}
               </div>
             )}
 
