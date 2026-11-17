@@ -91,12 +91,12 @@ export async function fetchGithubAccount(ownerInput: string, signal?: AbortSigna
   const headers = { Accept: "application/vnd.github+json" };
   let profileResponse = await fetch(`https://api.github.com/users/${encodeURIComponent(owner)}`, {
     headers,
-    signal,
+    ...(signal ? { signal } : {}),
   });
   if (profileResponse.status === 404) {
     profileResponse = await fetch(`https://api.github.com/orgs/${encodeURIComponent(owner)}`, {
       headers,
-      signal,
+      ...(signal ? { signal } : {}),
     });
   }
 
@@ -115,7 +115,7 @@ export async function fetchGithubAccount(ownerInput: string, signal?: AbortSigna
   for (let page = 1; page <= 10; page += 1) {
     const response = await fetch(
       `https://api.github.com/${endpoint}/${encodeURIComponent(owner)}/repos?type=${endpoint === "orgs" ? "public" : "owner"}&sort=updated&per_page=100&page=${page}`,
-      { headers, signal },
+      { headers, ...(signal ? { signal } : {}) },
     );
     if (!response.ok) {
       if (response.status === 403 || response.status === 429) {
