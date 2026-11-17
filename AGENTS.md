@@ -28,3 +28,7 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project architecture
+
+- Keep the GitHub metrics, score calculation, profile normalization, and CSV formatting in a browser-safe shared utility; the dashboard calls only GitHub's public API directly so no private credential or server integration is required.
